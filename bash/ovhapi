@@ -1,13 +1,5 @@
 #!/bin/bash
-CUR_DIR=$(basename $0)
-API_OVH="https://eu.api.ovh.com"
-
-[ -n "${1:-}" ] && METHOD="${1}" || end 1 "Missing method (GET|POST|...)"
-[ -n "${2:-}" ] && QUERY="${2}" || end 1 "Missing query like /1.0/ip?type=failover"
-
-# Application Key : must be set with AK environment variable.
-# Application Secret : must be set with AS environment variable
-# Consumer Key : if is unset by CK environment variable, it will be regenerate
+API_OVH="https://api.ovh.com"
 
 trap end_of_script 1 2 3 6 9 14 15
 
@@ -17,11 +9,32 @@ end () {
   exit $EXIT
 }
 
+man () {
+  cat <<EOF
+
+Usage : ovhapi method query
+
+AK : Application Key
+AS : Application Secret
+CK : Consumer Key
+
+AK, and CS must be available in environment variable. 
+Visite https://eu.api.ovh.com/createApp/ to create it.
+If CK is not given, URL is generate to validate a new one.
+
+EOF
+end 1 $@
+}
+
+[ -n "${1:-}" ] && METHOD="${1}" || man "Missing method (GET|POST|...)"
+[ -n "${2:-}" ] && QUERY="${2}" || man "Missing query like /1.0/ip?type=failover"
+[ -n "${3:-}" ] && BODY="${3}" || BODY=''
+
 CURL=$(which curl)
 [ -x $CURL ] || end 1 "Missing curl binary"
 
 JQ=$(which jq)
-[ -x $JQ ] || end 1 "Missing jq binary"
+[ -x $JQ ] && JQ="$JQ --raw-output" || JG=''
 
 # Time delta
 DELTA=$(($(date +%s) - $($CURL -s $API_OVH/1.0/auth/time)))
@@ -30,24 +43,27 @@ if [ -z $CK ]
 then
   AUTH=$($CURL -s -XPOST -H"X-Ovh-Application: $AK" -H "Content-type: application/json" \
          https://eu.api.ovh.com/1.0/auth/credential  \
-         -d '{ "accessRules": [ { "method": "GET", "path": "/*" } ] }')
-  CK=$(echo $AUTH| $JQ --raw-output .consumerKey)
-  URL=$(echo $AUTH| $JQ --raw-output .validationUrl)
+         -d '{ "accessRules": [ { "method": "GET", "path": "/*" }, { "method": "PUT", "path": "/*" }, { "method": "POST", "path": "/*" }, { "method": "DELETE", "path": "/*" } ] }')
+  CK=$(echo $AUTH| $JQ .consumerKey)
+  URL=$(echo $AUTH| $JQ .validationUrl)
   echo "please visite $URL to validate this Consumer Key"
   echo "After you can use this Consumer Key with: CK=$CK"
   exit
 fi
 
 QUERY="$API_OVH$QUERY"
-BODY=""
 TSTAMP=$(($(date +%s) + $DELTA))
 
 PRE=$AS"+"$CK"+"$METHOD"+"$QUERY"+"$BODY"+"$TSTAMP
 SIGNATURE='$1$'$(echo -n $PRE | openssl dgst -sha1 -hex | cut -f 2 -d ' ' )
 
-$CURL -H "X-Ovh-Application:$AK"      \
-      -H "X-Ovh-Timestamp:$TSTAMP"    \
-      -H "X-Ovh-Signature:$SIGNATURE" \
-      -H "X-Ovh-Consumer:$CK"         \
-      -s $QUERY | $JQ .
+$CURL -s \
+  -X$METHOD                           \
+  -H "Content-type: application/json" \
+  -H "X-Ovh-Application:$AK"          \
+  -H "X-Ovh-Timestamp:$TSTAMP"        \
+  -H "X-Ovh-Signature:$SIGNATURE"     \
+  -H "X-Ovh-Consumer:$CK"             \
+  --data-ascii "$BODY"                \
+  $QUERY | $JQ .
 
