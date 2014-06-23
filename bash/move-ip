@@ -1,0 +1,28 @@
+#!/bin/bash
+
+# Application Key : must be exported with AP variable.
+# Application Secret : must be exported with AS variable
+
+AUTH=$(curl -s -XPOST -H"X-Ovh-Application: $AP" -H "Content-type: application/json" \
+       https://eu.api.ovh.com/1.0/auth/credential  \
+       -d '{ "accessRules": [ { "method": "GET", "path": "/*" } ] }')
+CK=$(echo $AUTH| sed -e 's/.*consumerKey":"//' -e 's/".*//')
+URL=$(echo $AUTH| sed -e 's/.*validationUrl":"//' -e 's/".*//')
+
+METHOD=GET
+QUERY="/1.0/ip?type=failover"
+BODY=""
+TSTAMP=$(date +%s)
+
+PRE=$AS"+"$CK"+"$METHOD"+"$QUERY"+"$BODY"+"$TSTAMP
+echo $PRE
+SIGNATURE='$1$'$(echo -n $PRE | openssl dgst -sha1 -hex | cut -f 2 -d ' ' )
+
+curl -H "X-Ovh-Application:$AS"                   \
+     -H "X-Ovh-Timestamp:$TSTAMP"                                  \
+     -H "X-Ovh-Signature:$SIGNATURE" \
+     -H "X-Ovh-Consumer:$CK"             \
+       https://eu.api.ovh.com/$QUERY
+
+echo
+
