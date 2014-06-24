@@ -6,6 +6,7 @@ trap end_of_script 1 2 3 6 9 14 15
 end () {
   [ -n "${1:-}" ] && EXIT="${1}" || EXIT=0
   [ -n "${2:-}" ] && echo "$2" >&2
+  echo
   exit $EXIT
 }
 
@@ -23,18 +24,23 @@ Visite https://eu.api.ovh.com/createApp/ to create it.
 If CK is not given, URL is generate to validate a new one.
 
 EOF
-end 1 $@
+end 1 "$@"
 }
 
 [ -n "${1:-}" ] && METHOD="${1}" || man "Missing method (GET|POST|...)"
 [ -n "${2:-}" ] && QUERY="${2}" || man "Missing query like /1.0/ip?type=failover"
-[ -n "${3:-}" ] && BODY="${3}" || BODY=''
+[ -z $AK ] && man 'Missing Application Key (use export AK=....)'
+[ -z $AS ] && man 'Missing Application Secret (use export AS=....)'
+
+# Take body from stdin
+[ -t 0 ] && BODY="" || BODY=$(cat)
 
 CURL=$(which curl)
 [ -x $CURL ] || end 1 "Missing curl binary"
 
 JQ=$(which jq)
 [ -x $JQ ] && JQ="$JQ --raw-output" || JG=''
+JQ=''
 
 # Time delta
 DELTA=$(($(date +%s) - $($CURL -s $API_OVH/1.0/auth/time)))
@@ -44,10 +50,17 @@ then
   AUTH=$($CURL -s -XPOST -H"X-Ovh-Application: $AK" -H "Content-type: application/json" \
          https://eu.api.ovh.com/1.0/auth/credential  \
          -d '{ "accessRules": [ { "method": "GET", "path": "/*" }, { "method": "PUT", "path": "/*" }, { "method": "POST", "path": "/*" }, { "method": "DELETE", "path": "/*" } ] }')
-  CK=$(echo $AUTH| $JQ .consumerKey)
-  URL=$(echo $AUTH| $JQ .validationUrl)
-  echo "please visite $URL to validate this Consumer Key"
-  echo "After you can use this Consumer Key with: CK=$CK"
+  if [ -n "${JQ:-}" ] 
+  then
+    CK=$(echo $AUTH| $JQ .consumerKey)
+    URL=$(echo $AUTH| $JQ .validationUrl)
+    echo "please visite $URL to validate this Consumer Key"
+    echo "After you can export this Consumer Key with: export CK=$CK"
+  else
+    echo $AUTH
+    echo
+    echo "please visite validationUrl and export consumerKey"
+  fi
   exit
 fi
 
@@ -65,5 +78,5 @@ $CURL -s \
   -H "X-Ovh-Signature:$SIGNATURE"     \
   -H "X-Ovh-Consumer:$CK"             \
   --data-ascii "$BODY"                \
-  $QUERY | $JQ .
+  $QUERY
 
