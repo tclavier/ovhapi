@@ -31,5 +31,5 @@ $ echo '{"ip": "XXX.XXX.XXX.XXX"}' | ovhapi POST /1.0/dedicated/server/name_serv
 
 or
 ```
-$ echo { "to": "Name_server" }'' | ovhapi POST /1.0/ip/IP/move
+$ echo '{ "to": "Name_server" }' | ovhapi POST /1.0/ip/IP/move
 ```
